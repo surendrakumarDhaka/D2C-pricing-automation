@@ -51,6 +51,12 @@ class PriceEngine:
             return applicable_checkpoint_p
             
         steps = math.ceil(remaining / rate["step"])
+        
+        # Check if this step block ends at a reset checkpoint
+        block_end_w =   + (steps * rate["step"])
+        if block_end_w in self.checkpoints:
+             return self.checkpoints[block_end_w]
+
         return applicable_checkpoint_p + (steps * rate["price"])
 
 class PricingCalculator:
