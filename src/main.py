@@ -1,0 +1,61 @@
+import pandas as pd
+import os
+from src.parser import CourierSheetParser
+from src.logic import PricingCalculator
+
+def main():
+    input_file = "D2C Pricing Base File Template (1).xlsx"
+    output_dir = "output"
+    output_file = os.path.join(output_dir, "Courier_Pricing_Output.xlsx")
+    
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        
+    print(f"Reading input file: {input_file}")
+    parser = CourierSheetParser(input_file)
+    couriers = parser.parse()
+    
+    if not couriers:
+        print("No courier data found.")
+        return
+
+    calculator = PricingCalculator(max_weight_grams=50000, step_grams=500)
+    
+    # Create Excel Writer
+    with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
+        has_data = False
+        for courier in couriers:
+            print(f"Processing Courier: {courier.name}")
+            
+            # Group zones by Mode
+            zones_by_mode = {}
+            for zone in courier.zones:
+                if zone.mode not in zones_by_mode:
+                    zones_by_mode[zone.mode] = []
+                zones_by_mode[zone.mode].append(zone)
+            
+            for mode, zones in zones_by_mode.items():
+                print(f"  Generating sheet for Mode: {mode}")
+                
+                # Combine all zones for this mode into one DataFrame
+                mode_df = pd.DataFrame()
+                
+                for zone in zones:
+                    zone_df = calculator.generate_output_dataframe(zone)
+                    mode_df = pd.concat([mode_df, zone_df], ignore_index=True)
+                
+                if not mode_df.empty:
+                    sheet_name = f"{courier.name}_{mode}"[:31] # Excel sheet limit 31 chars
+                    # Clean sheet name
+                    sheet_name = "".join([c for c in sheet_name if c.isalnum() or c in ['_', ' ']])
+                    
+                    mode_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    has_data = True
+        
+        if not has_data:
+            print("No output data generated.")
+        else:
+            print(f"Output saved to: {output_file}")
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,4 @@
+output/
+.venv/
+*.xlsx
+data_loader.ipynb
