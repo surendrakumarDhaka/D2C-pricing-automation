@@ -3,3 +3,5 @@ output/
 *.xlsx
 data_loader.ipynb
 src/__pycache__/*
+__pycache__/*
+.env

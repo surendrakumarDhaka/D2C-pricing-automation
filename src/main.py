@@ -1,9 +1,20 @@
 import pandas as pd
 import os
+from dotenv import load_dotenv
 from src.parser import CourierSheetParser
 from src.logic import PricingCalculator
+from src.drive_uploader import get_or_create_folder, upload_with_versioning
 
 def main():
+    # Load env vars
+    load_dotenv()
+    folder_id = os.getenv("FOLDER_ID")
+    credentials_path = os.getenv("CREDENTIALS_PATH")
+    
+    if not folder_id or not credentials_path:
+        print("Error: FOLDER_ID or CREDENTIALS_PATH not set in .env")
+        return
+
     input_file = "D2C Pricing Base File Template (1).xlsx"
     output_dir = "output"
     output_file = os.path.join(output_dir, "Courier_Pricing_Output.xlsx")
@@ -54,8 +65,31 @@ def main():
         
         if not has_data:
             print("No output data generated.")
+            return
         else:
-            print(f"Output saved to: {output_file}")
+            print(f"Output saved locally to: {output_file}")
+
+    # Drive Upload Logic
+    try:
+        print("Starting Drive Upload...")
+        # Folder Name from Input File (without extension)
+        input_name_stem = os.path.splitext(input_file)[0]
+        
+        target_folder_id = get_or_create_folder(credentials_path, folder_id, input_name_stem)
+        print(f"Target Drive Folder ID: {target_folder_id}")
+        
+        # Upload Input File
+        print(f"Uploading Input File: {input_file}")
+        input_link = upload_with_versioning(input_file, credentials_path, target_folder_id)
+        print(f"Input File Link: {input_link}")
+        
+        # Upload Output File
+        print(f"Uploading Output File: {output_file}")
+        output_link = upload_with_versioning(output_file, credentials_path, target_folder_id)
+        print(f"Output File Link: {output_link}")
+        
+    except Exception as e:
+        print(f"Error during Drive upload: {e}")
 
 if __name__ == "__main__":
     main()
