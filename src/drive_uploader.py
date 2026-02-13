@@ -21,7 +21,8 @@ def upload_with_versioning(
     If a file with the same name exists, deletes the previous one before uploading.
     Includes exponential backoff retry for uploads.
     """
-    creds = Credentials.from_service_account_file(credentials_path)
+    SCOPES = ['https://www.googleapis.com/auth/drive']
+    creds = Credentials.from_service_account_file(credentials_path, scopes=SCOPES)
     service = build('drive', 'v3', credentials=creds, cache_discovery=False)
     
     # Construct new filename with date
@@ -114,7 +115,8 @@ def get_or_create_folder(
     """
     Finds or creates a folder with the given name under parent_folder_id.
     """
-    creds = Credentials.from_service_account_file(credentials_path)
+    SCOPES = ['https://www.googleapis.com/auth/drive']
+    creds = Credentials.from_service_account_file(credentials_path, scopes=SCOPES)
     service = build('drive', 'v3', credentials=creds, cache_discovery=False)
     
     query = (
