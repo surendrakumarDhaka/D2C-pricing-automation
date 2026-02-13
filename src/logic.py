@@ -71,6 +71,16 @@ class PricingCalculator:
         rto_engine = PriceEngine(zone_pricing.rto_rules) if zone_pricing.rto_rules else None
         rvp_engine = PriceEngine(zone_pricing.rvp_rules) if zone_pricing.rvp_rules else None
         
+        # Zone Mapping
+        zone_map = {
+            "Local": 1,
+            "Within State": 2,
+            "Metro": 3,
+            "Rest of India": 4,
+            "Special Zone": 5
+        }
+        zone_id = zone_map.get(zone_pricing.zone_name.strip(), zone_pricing.zone_name)
+
         # Safe default getters
         def get_val(val, default):
             return val if val is not None else default
@@ -130,7 +140,7 @@ class PricingCalculator:
             final_rvp_with_qc = final_rvp_without_qc + qc_charges
             
             row = {
-                "Zone": zone_pricing.zone_name,
+                "Zone": zone_id,
                 "Start Weight(gm)": start_w,
                 "Min Weight(gm)": start_w,
                 "Max Weight(gm)": end_w,

@@ -104,7 +104,6 @@ class CourierSheetParser:
         zp.volumetric_coefficient = get_float(first_row, 'Volumetric Coefficient') or 5000.0
         zp.tax_pct = get_float(first_row, 'Tax(%)') or 18.0
         zp.is_gst_inclusive = get_bool(first_row, 'Is GST Inclusive')
-        print("Is GST Inclusive: ", get_bool(first_row, 'Is GST Inclusive'))
         zp.fuel_surcharge_pct = get_float(first_row, 'Fuel Surcharge(%)') or 0.0
         zp.docket_charge = get_float(first_row, 'Docket Charge') or 0.0
         
