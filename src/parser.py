@@ -99,13 +99,13 @@ class CourierSheetParser:
 
         zp.qc_charges = get_float(first_row, 'QC Charges(Rs)')
         zp.cod_invoice_pct = get_float(first_row, 'Invoice Percentage for COD(Optional)%')
-        zp.cod_operator = get_str(first_row, 'COD Operator(Min/Max)') or "MAX"
+        zp.cod_operator = get_str(first_row, 'COD Operator(Min/Max)')
         zp.cod_fixed_charge = get_float(first_row, 'Fixed COD Charge(Optional)')
-        zp.volumetric_coefficient = get_float(first_row, 'Volumetric Coefficient') or 5000.0
-        zp.tax_pct = get_float(first_row, 'Tax(%)') or 18.0
+        zp.volumetric_coefficient = get_float(first_row, 'Volumetric Coefficient')
+        zp.tax_pct = get_float(first_row, 'Tax(%)')
         zp.is_gst_inclusive = get_bool(first_row, 'Is GST Inclusive')
-        zp.fuel_surcharge_pct = get_float(first_row, 'Fuel Surcharge(%)') or 0.0
-        zp.docket_charge = get_float(first_row, 'Docket Charge') or 0.0
+        zp.fuel_surcharge_pct = get_float(first_row, 'Fuel Surcharge(%)')
+        zp.docket_charge = get_float(first_row, 'Docket Charge')
         
         # Parse Slabs
         for row in rows:

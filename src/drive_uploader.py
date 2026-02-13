@@ -1,5 +1,8 @@
 import os
 import mimetypes
+import datetime
+import time
+import socket
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -10,18 +13,26 @@ def upload_with_versioning(
     file_path: str,
     credentials_path: str,
     parent_folder_id: str,
+    max_retries: int = 5
 ) -> str:
     """
     Uploads a file to a specific folder.
-    If a file with the same name exists, renames the old one with '_old' prefix.
+    Renames the file to include the current date (dd_mm_yyyy).
+    If a file with the same name exists, deletes the previous one before uploading.
+    Includes exponential backoff retry for uploads.
     """
     creds = Credentials.from_service_account_file(credentials_path)
     service = build('drive', 'v3', credentials=creds, cache_discovery=False)
     
-    file_name = os.path.basename(file_path)
+    # Construct new filename with date
+    base_name = os.path.basename(file_path)
+    name_stem, ext = os.path.splitext(base_name)
+    current_date = datetime.datetime.now().strftime("%d_%m_%Y")
     
-    # Check for existing file
-    query = f"name = '{file_name}' and '{parent_folder_id}' in parents and trashed = false"
+    new_filename = f"{name_stem}_{current_date}{ext}"
+    
+    # Check for existing file with NEW name
+    query = f"name = '{new_filename}' and '{parent_folder_id}' in parents and trashed = false"
     try:
         resp = service.files().list(
             q=query,
@@ -32,59 +43,67 @@ def upload_with_versioning(
         files = resp.get('files', [])
         
         if files:
-            existing_file = files[0]
-            existing_id = existing_file['id']
-            new_name = f"_old_{file_name}"
-            
-            # Check if _old file exists and delete it if so (to avoid name collision)
-            old_query = f"name = '{new_name}' and '{parent_folder_id}' in parents and trashed = false"
-            old_resp = service.files().list(
-                q=old_query,
-                fields="files(id)",
-                includeItemsFromAllDrives=True,
-                supportsAllDrives=True
-            ).execute()
-            old_files = old_resp.get('files', [])
-            for old_f in old_files:
+            for existing_file in files:
+                existing_id = existing_file['id']
+                # Delete existing file
                 try:
-                    service.files().delete(fileId=old_f['id'], supportsAllDrives=True).execute()
-                    print(f"Deleted existing old version: {new_name}")
-                except HttpError:
-                    pass
-
-            # Rename current existing file
-            body = {'name': new_name}
-            service.files().update(
-                fileId=existing_id,
-                body=body,
-                supportsAllDrives=True
-            ).execute()
-            print(f"Renamed existing file to: {new_name}")
+                    service.files().delete(fileId=existing_id, supportsAllDrives=True).execute()
+                    print(f"Deleted existing file: {new_filename}")
+                except HttpError as e:
+                    print(f"Error deleting file {new_filename}: {e}")
             
     except HttpError as e:
-        print(f"Error checking/renaming existing file: {e}")
+        print(f"Error checking existing file: {e}")
 
-    # Upload new file
+    # Upload new file with retry logic
     file_metadata = {
-        'name': file_name,
+        'name': new_filename,
         'parents': [parent_folder_id]
     }
     
     mime_type, _ = mimetypes.guess_type(file_path)
     if mime_type is None:
         mime_type = 'application/octet-stream'
-        
-    media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
+
+    last_exception = None
     
-    file = service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='id, webViewLink',
-        supportsAllDrives=True
-    ).execute()
-    
-    print(f"Uploaded: {file_name}")
-    return file.get('webViewLink')
+    for attempt in range(max_retries):
+        try:
+            media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
+            
+            file = service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id, webViewLink',
+                supportsAllDrives=True
+            ).execute()
+            
+            print(f"Uploaded: {new_filename}")
+            return file.get('webViewLink')
+            
+        except (HttpError, socket.timeout, Exception) as e:
+            last_exception = e
+            wait_time = (2 ** attempt) * 2
+            
+            # Check for specific HttpErrors if possible
+            is_transient = False
+            if isinstance(e, HttpError):
+                if e.resp.status in [408, 429, 500, 502, 503, 504]:
+                    is_transient = True
+            elif isinstance(e, socket.timeout):
+                 is_transient = True
+            else:
+                 # Treat generic exceptions (like "write operation timed out") as transient for upload
+                 is_transient = True
+                 
+            if is_transient and attempt < max_retries - 1:
+                print(f"Upload failed for {new_filename} (Attempt {attempt + 1}/{max_retries}). Error: {e}. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                print(f"Upload failed for {new_filename} after {attempt + 1} attempts.")
+                raise e
+
+    raise last_exception if last_exception else Exception("Upload failed")
 
 
 def get_or_create_folder(
