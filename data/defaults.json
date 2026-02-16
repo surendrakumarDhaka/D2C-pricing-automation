@@ -1,0 +1,11 @@
+{
+  "volumetric_coefficient": 5000.0,
+  "tax_pct": 18.0,
+  "is_gst_inclusive": false,
+  "fuel_surcharge_pct": 0.0,
+  "docket_charge": 0.0,
+  "qc_charges": 0.0,
+  "cod_invoice_pct": 1.5,
+  "cod_operator": "MAX",
+  "cod_fixed_charge": 30.0
+}

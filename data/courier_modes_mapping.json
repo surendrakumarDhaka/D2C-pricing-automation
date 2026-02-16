@@ -1,0 +1,174 @@
+[
+  {
+    "Sheet Name": "ATS_PRZ_1",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "Blitz_PRZ_1",
+    "Mode": "NDD"
+  },
+  {
+    "Sheet Name": "Blitz_SDD_PRZ_1",
+    "Mode": "SDD"
+  },
+  {
+    "Sheet Name": "Bluedart_PRZ_10",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "Bluedart_PRZ_7",
+    "Mode": "Air"
+  },
+  {
+    "Sheet Name": "Bluedart_PRZ_8",
+    "Mode": "Air"
+  },
+  {
+    "Sheet Name": "Bluedart_PRZ_9",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "Delhivery_END_SURFACE_PRZ_1",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "DELHIVERY_PRZ_10",
+    "Mode": "Reverse Surface"
+  },
+  {
+    "Sheet Name": "DELHIVERY_PRZ_11",
+    "Mode": "Reverse Air"
+  },
+  {
+    "Sheet Name": "DELHIVERY_PRZ_2",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "DELHIVERY_PRZ_20",
+    "Mode": "Reverse"
+  },
+  {
+    "Sheet Name": "DELHIVERY_PRZ_6",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "DELHIVERY_PRZ_7",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "Delhivery_PRZ_8",
+    "Mode": "Air"
+  },
+  {
+    "Sheet Name": "DELHIVERY_PRZ_9",
+    "Mode": "Reverse"
+  },
+  {
+    "Sheet Name": "Delhivery_WH_SURFACE_PRZ_1",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "DTDC_Air_Enterprise_PRZ_1",
+    "Mode": "Air"
+  },
+  {
+    "Sheet Name": "DTDC_SURFACE_PRZ_1",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "Ekart_Air_PRZ_1",
+    "Mode": "Air"
+  },
+  {
+    "Sheet Name": "Ekart_Heavy_B2C_PRZ_4",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "Ekart_PRZ_1",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "Ekart_RVP_PRO_PRZ_1",
+    "Mode": "Reverse"
+  },
+  {
+    "Sheet Name": "ElasticRunSDD_PRZ_1",
+    "Mode": "SDD"
+  },
+  {
+    "Sheet Name": "Pikndel_Enterprise_NDD_PRZ_8",
+    "Mode": "NDD"
+  },
+  {
+    "Sheet Name": "Pikndel_NDD_Heavy_PRZ_1",
+    "Mode": "NDD"
+  },
+  {
+    "Sheet Name": "Shadowfax _Express_SDD_PRZ_1",
+    "Mode": "SDD"
+  },
+  {
+    "Sheet Name": "Shadowfax_Express_PRZ_1",
+    "Mode": "Air"
+  },
+  {
+    "Sheet Name": "Shadowfax_Forward_PRZ_3",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "Shadowfax_Matketplace_PRZ_1",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "Shadowfax_NDD_Heavy_PRZ_1",
+    "Mode": "NDD"
+  },
+  {
+    "Sheet Name": "Shadowfax_Reverse_NonQC_PRZ_1",
+    "Mode": "Reverse"
+  },
+  {
+    "Sheet Name": "Shadowfax_Reverse_PRZ_2",
+    "Mode": "Reverse"
+  },
+  {
+    "Sheet Name": "SWIFT_BD_SURFACE_PRZ_5",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "XpressBees_PRZ_1",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "XpressBees_PRZ_11",
+    "Mode": "SDD"
+  },
+  {
+    "Sheet Name": "XpressBees_PRZ_2",
+    "Mode": "Reverse"
+  },
+  {
+    "Sheet Name": "XpressBees_PRZ_4",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "XpressBees_PRZ_5",
+    "Mode": "Surface"
+  },
+  {
+    "Sheet Name": "XpressBees_PRZ_6",
+    "Mode": "Air"
+  },
+  {
+    "Sheet Name": "XpressBees_PRZ_7",
+    "Mode": "Reverse"
+  },
+  {
+    "Sheet Name": "XpressBees_PRZ_9",
+    "Mode": "Reverse"
+  },
+  {
+    "Sheet Name": "XpressBees_Reverse_NonQC_PRZ_1",
+    "Mode": "Reverse"
+  }
+]
