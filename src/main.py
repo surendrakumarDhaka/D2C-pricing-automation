@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from src.parser import CourierSheetParser
 from src.logic import PricingCalculator
 from src.drive_uploader import get_or_create_folder, upload_with_versioning
+from src.models import ZonePricing
 
 def load_sheet_mapping(mapping_file_path: str) -> pd.DataFrame:
     try:
@@ -11,6 +12,14 @@ def load_sheet_mapping(mapping_file_path: str) -> pd.DataFrame:
     except Exception as e:
         print(f"Error loading mapping file: {e}")
         return pd.DataFrame()
+
+def create_default_zone_pricing(zone_name: str, mode: str) -> ZonePricing:
+    zp = ZonePricing(zone_name=zone_name, mode=mode)
+    # Globals
+    zp.volumetric_coefficient = 5000.0
+    zp.tax_pct = 18.0
+    # No rules -> PriceEngine returns 0
+    return zp
 
 def main():
     # Load env vars
@@ -40,59 +49,107 @@ def main():
     parser = CourierSheetParser(input_file)
     couriers = parser.parse()
     
+    # Create map: lower(courier_name) -> CourierData
+    courier_map = {c.name.lower(): c for c in couriers}
+    
     if not couriers:
-        print("No courier data found.")
+        print("No courier data found in input file.")
         return
 
     calculator = PricingCalculator(max_weight_grams=50000, step_grams=500)
     
+    # Helper to check if a courier matches mapping sheet name
+    def find_courier_for_sheet(sheet_name):
+        sheet_lower = sheet_name.lower()
+        # Sort keys by length desc to match longest first (e.g. "Delhivery" vs "Del")
+        for name in sorted(courier_map.keys(), key=len, reverse=True):
+            if name in sheet_lower:
+                return courier_map[name]
+        return None
+
+    # Helper to clean mode
+    def clean_mode_str(mode_str):
+        if not isinstance(mode_str, str): return ""
+        return mode_str.strip()
+
     # Create Excel Writer
     with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
         has_data = False
-        for courier in couriers:
-            print(f"Processing Courier: {courier.name}")
-            
-            # Group zones by Mode
-            zones_by_mode = {}
-            for zone in courier.zones:
-                if zone.mode not in zones_by_mode:
-                    zones_by_mode[zone.mode] = []
-                zones_by_mode[zone.mode].append(zone)
-            
-            for mode, zones in zones_by_mode.items():
-                print(f"  Generating sheet for Mode: {mode}")
+        
+        # We iterate through the mapping file rows primarily
+        if not mapping_df.empty:
+            for index, row in mapping_df.iterrows():
+                sheet_name = str(row['Sheet Name'])
+                target_mode = clean_mode_str(row['Mode']) # e.g. "Surface", "Reverse Air"
                 
-                # Combine all zones for this mode into one DataFrame
+                # Check for Reverse
+                is_reverse = "reverse" in target_mode.lower()
+                
+                # If Reverse: "Reverse Air" -> "Air", "Reverse" -> "Surface" (default)
+                base_mode = target_mode
+                if is_reverse:
+                    if "air" in target_mode.lower():
+                        base_mode = "Air"
+                    elif "sdd" in target_mode.lower():
+                        base_mode = "SDD"
+                    elif "ndd" in target_mode.lower():
+                        base_mode = "NDD"
+                    else:
+                        base_mode = "Surface" # Default for just "Reverse"
+                
+                courier = find_courier_for_sheet(sheet_name)
+                
                 mode_df = pd.DataFrame()
+                zones_processed = False
                 
-                for zone in zones:
-                    zone_df = calculator.generate_output_dataframe(zone)
-                    mode_df = pd.concat([mode_df, zone_df], ignore_index=True)
+                if courier:
+                    # Look for base_mode in courier zones
+                    zones = [z for z in courier.zones if z.mode.lower() == base_mode.lower()]
+                    
+                    if zones:
+                        for zone in zones:
+                            zone_df = calculator.generate_output_dataframe(zone, force_price_zero=is_reverse)
+                            mode_df = pd.concat([mode_df, zone_df], ignore_index=True)
+                        zones_processed = True
+                    else:
+                        print(f"Courier found ({courier.name}) but mode '{base_mode}' missing for sheet '{sheet_name}'. Using defaults.")
                 
+                if not zones_processed:
+                    # Generate default/empty sheet
+                    zones = ["Local", "Within State", "Metro", "Rest of India", "Special Zone"]
+                    for z_name in zones:
+                        dummy_zp = create_default_zone_pricing(z_name, base_mode)
+                        zone_df = calculator.generate_output_dataframe(dummy_zp, force_price_zero=False) 
+                        mode_df = pd.concat([mode_df, zone_df], ignore_index=True)
+
                 if not mode_df.empty:
-                    # Find mapped sheet names
-                    sheet_names = []
-                    if not mapping_df.empty:
-                        # Filter mapping
-                        matches = mapping_df[
-                            (mapping_df['Sheet Name'].str.contains(courier.name, case=False, na=False)) & 
-                            (mapping_df['Mode'].str.lower() == mode.lower())
-                        ]
-                        
-                        if not matches.empty:
-                            sheet_names = matches['Sheet Name'].tolist()
-                    
-                    if not sheet_names:
-                        # Fallback
-                        fallback_name = f"{courier.name}_{mode}"
-                        clean_name = "".join([c for c in fallback_name if c.isalnum() or c in ['_', ' ']])
-                        sheet_names = [clean_name]
-                        print(f"    No mapping found for {courier.name} - {mode}. Using default: {clean_name}")
-                    
-                    for sheet_name in sheet_names:
-                        final_sheet_name = sheet_name[:31]
-                        print(f"    Writing sheet: {final_sheet_name}")
+                    final_sheet_name = sheet_name[:31]
+                    try:
                         mode_df.to_excel(writer, sheet_name=final_sheet_name, index=False)
+                        has_data = True
+                    except ValueError:
+                        print(f"Error writing sheet: {final_sheet_name}. Skipping.")
+                        pass
+        else:
+            # Fallback to old logic if no mapping
+            print("No Courier ids/modes mapping file/data. Running default generation.")
+            for courier in couriers:
+                zones_by_mode = {}
+                for zone in courier.zones:
+                    if zone.mode not in zones_by_mode:
+                        zones_by_mode[zone.mode] = []
+                    zones_by_mode[zone.mode].append(zone)
+                
+                for mode, zones in zones_by_mode.items():
+                    mode_df = pd.DataFrame()
+                    for zone in zones:
+                        zone_df = calculator.generate_output_dataframe(zone)
+                        mode_df = pd.concat([mode_df, zone_df], ignore_index=True)
+                    
+                    if not mode_df.empty:
+                        sheet_name = f"{courier.name}_{mode}"[:31]
+                        sheet_name = "".join([c for c in sheet_name if c.isalnum() or c in ['_', ' ']])
+                        mode_df.to_excel(writer, sheet_name=sheet_name, index=False)
                         has_data = True
         
         if not has_data:

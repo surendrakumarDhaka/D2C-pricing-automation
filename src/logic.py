@@ -64,7 +64,7 @@ class PricingCalculator:
         self.max_weight_grams = max_weight_grams
         self.step_grams = step_grams
 
-    def generate_output_dataframe(self, zone_pricing: ZonePricing) -> pd.DataFrame:
+    def generate_output_dataframe(self, zone_pricing: ZonePricing, force_price_zero: bool = False) -> pd.DataFrame:
         rows = []
         
         fwd_engine = PriceEngine(zone_pricing.fwd_rules)
@@ -99,6 +99,9 @@ class PricingCalculator:
             end_w = start_w + self.step_grams
             
             fwd_price = fwd_engine.calculate_price(end_w)
+
+            if is_gst_inc and fwd_price:
+                fwd_price = fwd_price / 1.18
             
             rto_price = 0.0
             if rto_engine:
@@ -134,11 +137,11 @@ class PricingCalculator:
             final_fwd_price = fwd_price
             final_rvp_without_qc = rvp_without_qc
             
-            if is_gst_inc:
-                final_fwd_price = fwd_price / 1.18
-                final_rvp_without_qc = final_rvp_without_qc / 1.18
-            final_rvp_with_qc = final_rvp_without_qc + qc_charges
+            final_rvp_with_qc = final_rvp_without_qc + qc_charges if qc_charges is not None else final_rvp_without_qc
             
+            if force_price_zero:
+                final_fwd_price = 0.01
+
             row = {
                 "Zone": zone_id,
                 "Start Weight(gm)": start_w,
