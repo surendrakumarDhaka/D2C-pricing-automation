@@ -138,6 +138,7 @@ class PricingCalculator:
             rto_pct = 0.0
             if fwd_price > 0:
                 rto_pct = rto_price / fwd_price
+                rto_pct *= 100
 
             final_fwd_price = fwd_price
             final_rvp_without_qc = rvp_without_qc
