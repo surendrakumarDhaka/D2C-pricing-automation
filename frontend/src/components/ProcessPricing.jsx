@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Upload, FileSpreadsheet, Link2, AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, X, HardDrive, Copy, Check } from 'lucide-react';
+import { Upload, FileSpreadsheet, Link2, AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, X, HardDrive, Copy, Check, Download } from 'lucide-react';
 
 const getBase = () => {
   const origin = window.location.origin;
@@ -123,6 +123,10 @@ export default function ProcessPricing({ token }) {
   const [dragOver, setDragOver] = useState(false);
   const [accessDenied, setAccessDenied] = useState(null); // { message, serviceAccountEmail }
   const fileRef = useRef(null);
+  const templateFileName = 'D2C Pricing Base File Template.xlsx';
+  const basePath = import.meta.env.BASE_URL || import.meta.env.VITE_BASE_PATH || '/';
+  const normalizedBasePath = basePath.endsWith('/') ? basePath : `${basePath}/`;
+  const templateHref = `${normalizedBasePath}${encodeURIComponent(templateFileName)}`;
 
   useEffect(() => {
     (async () => {
@@ -354,8 +358,19 @@ export default function ProcessPricing({ token }) {
               type="text"
               value={merchantName}
               onChange={(e) => setMerchantName(e.target.value)}
-              placeholder="e.g. Acme Corp"
+              placeholder="e.g. Comet"
             />
+          </div>
+
+          <div className="message-info" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <strong>Need a base file template?</strong>
+              <div className="text-xs text-muted" style={{ marginTop: 4 }}>Download, fill, and upload the standardized template.</div>
+            </div>
+            <a className="btn btn-outline btn-sm" href={templateHref} download={templateFileName}>
+              <Download size={16} />
+              Download Template
+            </a>
           </div>
 
           {/* Input mode toggle */}
