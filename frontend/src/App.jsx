@@ -59,6 +59,8 @@ export default function App() {
             headers: { Authorization: `Bearer ${savedToken}` }
           });
           if (r.ok) {
+            const data = await r.json();
+            setUserInfo(prev => ({ ...prev, ...data }));
             setAccessDenied(false);
           } else {
             setAccessDenied(true);
@@ -72,11 +74,23 @@ export default function App() {
     }
   }, []);
 
-  const handleSignIn = (newToken) => {
+  const handleSignIn = async (newToken) => {
     setToken(newToken);
     try {
       const payload = JSON.parse(atob(newToken.split('.')[1]));
       setUserInfo({ name: payload.name, email: payload.email, picture: payload.picture });
+      
+      // Verify with backend
+      try {
+        const r = await fetch(`${getBase()}/api/me`, {
+          headers: { Authorization: `Bearer ${newToken}` }
+        });
+        if (r.ok) {
+          const data = await r.json();
+          setUserInfo(prev => ({ ...prev, ...data }));
+        }
+      } catch {}
+      
       setAccessDenied(false);
     } catch { }
   };

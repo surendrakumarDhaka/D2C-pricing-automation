@@ -592,6 +592,43 @@ export default function ProcessPricing({ token }) {
               <strong>Processing complete for {result.merchant_name}!</strong>
             </div>
           </div>
+          
+          {/* Zone Copy Info */}
+          {result.zone_copy_info && result.zone_copy_info.length > 0 && (
+            <div className="message-info">
+              <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
+                <AlertTriangle size={16} />
+                <strong>Zone Pricing Copied</strong>
+              </div>
+              <p style={{ margin: '0 0 8px', fontSize: '0.88rem' }}>
+                For SDD/NDD modes, missing zones were automatically filled by copying pricing from the last available zone:
+              </p>
+              <ul style={{ margin: '8px 0 0', paddingLeft: 20, fontSize: '0.88rem' }}>
+                {result.zone_copy_info.map((info, i) => {
+                  // Show sheet name and couriers if available, otherwise fall back to courier name
+                  let identifier = '';
+                  if (info.sheet_name && info.couriers) {
+                    if (info.couriers.length === 1) {
+                      identifier = `Sheet '${info.sheet_name}' (Courier: ${info.couriers[0]})`;
+                    } else {
+                      identifier = `Sheet '${info.sheet_name}' (Couriers: ${info.couriers.join(', ')})`;
+                    }
+                  } else if (info.courier) {
+                    identifier = info.courier;
+                  } else {
+                    identifier = 'Unknown';
+                  }
+                  return (
+                    <li key={i} style={{ marginBottom: 6 }}>
+                      <strong>{identifier}</strong> - Mode <strong>{info.mode}</strong>: 
+                      Missing zones ({info.missing_zones.join(', ')}) copied from <strong>{info.copied_from}</strong>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          
           <div className="result-card">
             <a href={result.input_file_link} target="_blank" rel="noopener noreferrer" className="result-link">
               <Link2 size={18} />

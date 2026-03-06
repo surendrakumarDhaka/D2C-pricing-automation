@@ -4,10 +4,12 @@ import shutil
 import tempfile
 import traceback
 import pandas as pd
+from pathlib import Path
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -18,7 +20,7 @@ from src.drive_uploader import (
     extract_file_id_from_link, check_drive_access, download_drive_file,
     get_service_account_email
 )
-from src.models import ZonePricing
+from src.models import ZonePricing, CourierData
 from src.validator import validate_courier_data
 from src.logger import get_logger
 
@@ -30,7 +32,7 @@ CREDENTIALS_PATH = os.getenv("CREDENTIALS_PATH")
 MAPPING_FILE = os.getenv("MAPPING_FILE_PATH", "Courier_ids_Modes.xlsx")
 GOOGLE_CLIENT_ID = os.getenv("VITE_GOOGLE_CLIENT_ID", "")
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
-BASE_PATH = os.getenv("BASE_PATH")
+BASE_PATH = os.getenv("BASE_PATH", "")
 
 logger.info("Starting Courier Pricing Automation API v2")
 logger.info("FOLDER_ID=%s, CREDENTIALS_PATH=%s, MAPPING_FILE=%s", FOLDER_ID, CREDENTIALS_PATH, MAPPING_FILE)
@@ -122,6 +124,141 @@ def init_data_from_excel():
         logger.info("Initialized defaults JSON")
 
 init_data_from_excel()
+
+# Zone name to ID mapping
+ZONE_NAMES = ["Local", "Within State", "Metro", "Rest of India", "Special Zone"]
+ZONE_NAME_TO_ID = {
+    "Local": 1,
+    "Within State": 2,
+    "Metro": 3,
+    "Rest of India": 4,
+    "Special Zone": 5
+}
+
+def validate_zones_for_courier(courier_data: CourierData) -> Dict[str, Any]:
+    """
+    Validates that courier has all 5 zones for each mode (except SDD/NDD).
+    Also validates that no invalid zone names are present.
+    Returns: {"errors": [...], "zone_copy_info": [...]}
+    zone_copy_info: list of dicts with mode, missing_zones, copied_from info for SDD/NDD
+    """
+    errors = []
+    zone_copy_info = []
+    
+    # First, check for invalid zone names across all zones
+    # Group invalid zones by mode for better error messages
+    from collections import defaultdict
+    invalid_by_mode = defaultdict(list)  # mode -> list of invalid zone names
+    
+    for zone in courier_data.zones:
+        zone_name_clean = zone.zone_name.strip()
+        if zone_name_clean not in ZONE_NAMES:
+            mode = zone.mode.strip()
+            invalid_by_mode[mode].append(zone_name_clean)
+    
+    if invalid_by_mode:
+        error_parts = []
+        for mode, invalid_zones in invalid_by_mode.items():
+            if len(invalid_zones) == 1:
+                error_parts.append(f"Mode '{mode}': Zone '{invalid_zones[0]}' is invalid")
+            else:
+                zones_str = ", ".join(f"'{z}'" for z in invalid_zones)
+                error_parts.append(f"Mode '{mode}': Zones ({zones_str}) are invalid")
+        
+        errors.append(
+            f"[{courier_data.name}] {'. '.join(error_parts)}. "
+            f"Allowed zone names are: {', '.join(ZONE_NAMES)}."
+        )
+        logger.warning("[validate_zones] Courier '%s' has invalid zones: %s", courier_data.name, dict(invalid_by_mode))
+        return {"errors": errors, "zone_copy_info": zone_copy_info}
+    
+    # Group zones by mode
+    zones_by_mode: Dict[str, List[ZonePricing]] = {}
+    for zone in courier_data.zones:
+        mode = zone.mode.strip()
+        if mode not in zones_by_mode:
+            zones_by_mode[mode] = []
+        zones_by_mode[mode].append(zone)
+    
+    # Check each mode
+    for mode, zones in zones_by_mode.items():
+        mode_lower = mode.lower()
+        is_sdd_ndd = "sdd" in mode_lower or "ndd" in mode_lower
+        
+        # Get zone names present
+        present_zones = {z.zone_name.strip() for z in zones}
+        missing_zones = [zn for zn in ZONE_NAMES if zn not in present_zones]
+        
+        if not missing_zones:
+            continue  # All zones present
+        
+        # For SDD/NDD: copy from last available zone
+        if is_sdd_ndd:
+            if not present_zones:
+                errors.append(f"[{courier_data.name}] Mode '{mode}': No zones found. At least one zone is required.")
+                continue
+            
+            # Find the last available zone (by order in ZONE_NAMES)
+            last_available_zone_name = None
+            for zn in reversed(ZONE_NAMES):
+                if zn in present_zones:
+                    last_available_zone_name = zn
+                    break
+            
+            if last_available_zone_name:
+                # Find the zone object to copy from
+                source_zone = next((z for z in zones if z.zone_name.strip() == last_available_zone_name), None)
+                if source_zone:
+                    # Import SlabRule for deep copy
+                    from src.models import SlabRule
+                    import copy
+                    
+                    # Copy missing zones
+                    for missing_zone_name in missing_zones:
+                        # Deep copy rules
+                        fwd_rules_copy = [copy.deepcopy(rule) for rule in source_zone.fwd_rules] if source_zone.fwd_rules else []
+                        rto_rules_copy = [copy.deepcopy(rule) for rule in source_zone.rto_rules] if source_zone.rto_rules else []
+                        rvp_rules_copy = [copy.deepcopy(rule) for rule in source_zone.rvp_rules] if source_zone.rvp_rules else []
+                        
+                        copied_zone = ZonePricing(
+                            zone_name=missing_zone_name,
+                            mode=mode,
+                            fwd_rules=fwd_rules_copy,
+                            rto_rules=rto_rules_copy,
+                            rvp_rules=rvp_rules_copy,
+                            rto_fwd_multiplier=source_zone.rto_fwd_multiplier,
+                            rvp_flat_addition=source_zone.rvp_flat_addition,
+                            rvp_fwd_multiplier=source_zone.rvp_fwd_multiplier,
+                            rvp_operator=source_zone.rvp_operator,
+                            qc_charges=source_zone.qc_charges,
+                            cod_invoice_pct=source_zone.cod_invoice_pct,
+                            cod_operator=source_zone.cod_operator,
+                            cod_fixed_charge=source_zone.cod_fixed_charge,
+                            volumetric_coefficient=source_zone.volumetric_coefficient,
+                            tax_pct=source_zone.tax_pct,
+                            is_gst_inclusive=source_zone.is_gst_inclusive,
+                            fuel_surcharge_pct=source_zone.fuel_surcharge_pct,
+                            docket_charge=source_zone.docket_charge
+                        )
+                        courier_data.zones.append(copied_zone)
+                    
+                    zone_copy_info.append({
+                        "sheet_name": None,  # Will be set during aggregation
+                        "courier": courier_data.name,  # Keep for backward compatibility
+                        "couriers": None,  # Will be set during aggregation
+                        "mode": mode,
+                        "missing_zones": missing_zones,
+                        "copied_from": last_available_zone_name
+                    })
+        else:
+            # For non-SDD/NDD modes: error if zones missing
+            if present_zones:  # Has at least one zone
+                errors.append(
+                    f"[{courier_data.name}] Mode '{mode}': Missing zones: {', '.join(missing_zones)}. "
+                    f"All 5 zones (Local, Within State, Metro, Rest of India, Special Zone) are required."
+                )
+    
+    return {"errors": errors, "zone_copy_info": zone_copy_info}
 
 # --- Pydantic Models ---
 
@@ -399,26 +536,103 @@ async def process_pricing(
 
         sheet_data_map = {c.name: c for c in all_couriers}
 
-        # Build courier mapping
+        # Build courier mapping and track sheet-to-courier mapping
         courier_to_data = {}
+        sheet_to_couriers = {}  # sheet_name -> list of courier names
         for sheet_name, courier_names in mapping_dict.items():
             if sheet_name not in sheet_data_map:
                 logger.error("[process] Sheet '%s' not found in uploaded file. Available: %s", sheet_name, list(sheet_data_map.keys()))
                 raise HTTPException(status_code=400, detail=f"Sheet '{sheet_name}' not found in uploaded file.")
+            sheet_to_couriers[sheet_name] = courier_names
             for cn in courier_names:
                 courier_to_data[cn.lower()] = sheet_data_map[sheet_name]
         logger.info("[process] Courier-to-data mapping: %s", list(courier_to_data.keys()))
 
-        # Validate
+        # Validate zones (all 5 zones required, SDD/NDD can copy) - aggregate by sheet
+        logger.info("[process] Validating zones for all sheets...")
+        all_zone_errors = []
+        all_zone_copy_info = []
+        validated_sheets = set()  # Track which sheets we've already validated
+        
+        for sheet_name, courier_names in sheet_to_couriers.items():
+            if sheet_name in validated_sheets:
+                continue  # Skip if already validated
+            validated_sheets.add(sheet_name)
+            
+            courier_data = sheet_data_map[sheet_name]
+            zone_result = validate_zones_for_courier(courier_data)
+            
+            # Aggregate errors by sheet, showing affected couriers
+            if zone_result["errors"]:
+                # Remove courier name prefix from errors (format: "[CourierName] ...")
+                cleaned_errors = []
+                for err in zone_result["errors"]:
+                    # Remove courier name prefix if present
+                    if err.startswith(f"[{courier_data.name}] "):
+                        cleaned_errors.append(err[len(f"[{courier_data.name}] "):])
+                    else:
+                        cleaned_errors.append(err)
+                
+                if len(courier_names) == 1:
+                    # Single courier - show courier name
+                    for err_msg in cleaned_errors:
+                        all_zone_errors.append(f"Sheet '{sheet_name}' (Courier: {courier_names[0]}): {err_msg}")
+                else:
+                    # Multiple couriers - show sheet name and list of couriers
+                    couriers_str = ", ".join(courier_names)
+                    for err_msg in cleaned_errors:
+                        all_zone_errors.append(f"Sheet '{sheet_name}' (Couriers: {couriers_str}): {err_msg}")
+            
+            # Zone copy info - also aggregate by sheet
+            for copy_info in zone_result["zone_copy_info"]:
+                copy_info["sheet_name"] = sheet_name
+                copy_info["couriers"] = courier_names
+                all_zone_copy_info.append(copy_info)
+        
+        if all_zone_errors:
+            logger.warning("[process] Zone validation errors (%d): %s", len(all_zone_errors), all_zone_errors)
+            raise HTTPException(status_code=422, detail={
+                "message": "Zone validation failed. All 5 zones are required for each mode (except SDD/NDD).",
+                "errors": all_zone_errors
+            })
+
+        # Validate courier data (field completeness) - aggregate by sheet
         logger.info("[process] Validating courier data...")
         all_errors = []
         all_warnings = []
-        for courier_name_lower, courier_data in courier_to_data.items():
+        validated_sheets.clear()  # Reuse for data validation
+        
+        for sheet_name, courier_names in sheet_to_couriers.items():
+            if sheet_name in validated_sheets:
+                continue  # Skip if already validated
+            validated_sheets.add(sheet_name)
+            
+            courier_data = sheet_data_map[sheet_name]
             result = validate_courier_data(courier_data)
-            for err in result.get("errors", []):
-                all_errors.append(f"[{courier_data.name}] {err}")
-            for warn in result.get("warnings", []):
-                all_warnings.append(f"[{courier_data.name}] {warn}")
+            
+            # Aggregate errors by sheet
+            if result.get("errors"):
+                if len(courier_names) == 1:
+                    # Single courier - show courier name
+                    for err in result["errors"]:
+                        all_errors.append(f"Sheet '{sheet_name}' (Courier: {courier_names[0]}): {err}")
+                else:
+                    # Multiple couriers - show sheet name and list of couriers
+                    couriers_str = ", ".join(courier_names)
+                    for err in result["errors"]:
+                        all_errors.append(f"Sheet '{sheet_name}' (Couriers: {couriers_str}): {err}")
+            
+            # Aggregate warnings by sheet
+            if result.get("warnings"):
+                if len(courier_names) == 1:
+                    # Single courier - show courier name
+                    for warn in result["warnings"]:
+                        all_warnings.append(f"Sheet '{sheet_name}' (Courier: {courier_names[0]}): {warn}")
+                else:
+                    # Multiple couriers - show sheet name and list of couriers
+                    couriers_str = ", ".join(courier_names)
+                    for warn in result["warnings"]:
+                        all_warnings.append(f"Sheet '{sheet_name}' (Couriers: {couriers_str}): {warn}")
 
         if all_errors:
             logger.warning("[process] Validation errors (%d): %s", len(all_errors), all_errors)
@@ -475,19 +689,32 @@ async def process_pricing(
 
                 mode_df = pd.DataFrame()
                 zones_processed = False
+                zones_found = []
 
                 if courier_data:
                     zones = [z for z in courier_data.zones if z.mode.lower() == base_mode.lower()]
                     if zones:
-                        for zone in zones:
+                        # Ensure we have all 5 zones
+                        zone_names_present = {z.zone_name.strip() for z in zones}
+                        for z_name in ZONE_NAMES:
+                            zone_obj = next((z for z in zones if z.zone_name.strip() == z_name), None)
+                            if zone_obj:
+                                zones_found.append(zone_obj)
+                            else:
+                                # Missing zone - use default (shouldn't happen after validation, but safety check)
+                                logger.warning("[process] Sheet '%s', mode '%s': missing zone '%s', using default", sheet_name, base_mode, z_name)
+                                zones_found.append(create_default_zone_pricing(z_name, base_mode))
+                        
+                        # Generate output for all zones in order
+                        for zone in zones_found:
                             zone_df = calculator.generate_output_dataframe(zone, force_price_zero=is_reverse)
                             mode_df = pd.concat([mode_df, zone_df], ignore_index=True)
                         zones_processed = True
-                        logger.debug("[process] Sheet '%s': matched courier, %d zones for mode '%s'", sheet_name, len(zones), base_mode)
+                        logger.debug("[process] Sheet '%s': matched courier, %d zones for mode '%s'", sheet_name, len(zones_found), base_mode)
 
                 if not zones_processed:
-                    zone_names = ["Local", "Within State", "Metro", "Rest of India", "Special Zone"]
-                    for z_name in zone_names:
+                    # No courier data - use defaults for all 5 zones
+                    for z_name in ZONE_NAMES:
                         dummy_zp = create_default_zone_pricing(z_name, base_mode)
                         zone_df = calculator.generate_output_dataframe(dummy_zp, force_price_zero=False)
                         mode_df = pd.concat([mode_df, zone_df], ignore_index=True)
@@ -521,13 +748,19 @@ async def process_pricing(
             logger.info("[process] Output file uploaded: %s", output_link)
 
             logger.info("[process] SUCCESS for merchant='%s'", merchant_name)
-            return JSONResponse(content={
+            response_data = {
                 "status": "success",
                 "merchant_name": merchant_name,
                 "input_file_link": input_link,
                 "output_file_link": output_link,
                 "folder_id": target_folder_id
-            })
+            }
+            
+            # Add zone copy info if any
+            if all_zone_copy_info:
+                response_data["zone_copy_info"] = all_zone_copy_info
+            
+            return JSONResponse(content=response_data)
         except Exception as e:
             logger.error("[process] Drive upload error: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail=f"Drive Upload Error: {str(e)}")
