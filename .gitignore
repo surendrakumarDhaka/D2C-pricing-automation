@@ -5,3 +5,7 @@ data_loader.ipynb
 src/__pycache__/*
 __pycache__/*
 .env
+frontend/node_modules/
+logs/
+vendor-compliances-verification/
+frontend/dist/

@@ -30,11 +30,12 @@ CREDENTIALS_PATH = os.getenv("CREDENTIALS_PATH")
 MAPPING_FILE = os.getenv("MAPPING_FILE_PATH", "Courier_ids_Modes.xlsx")
 GOOGLE_CLIENT_ID = os.getenv("VITE_GOOGLE_CLIENT_ID", "")
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+BASE_PATH = os.getenv("BASE_PATH")
 
 logger.info("Starting Courier Pricing Automation API v2")
 logger.info("FOLDER_ID=%s, CREDENTIALS_PATH=%s, MAPPING_FILE=%s", FOLDER_ID, CREDENTIALS_PATH, MAPPING_FILE)
 
-app = FastAPI(title="Courier Pricing Automation API")
+app = FastAPI(title="Courier Pricing Automation API", root_path=BASE_PATH if BASE_PATH != "/" else "")
 
 app.add_middleware(
     CORSMiddleware,
@@ -546,6 +547,21 @@ def create_default_zone_pricing(zone_name: str, mode: str) -> ZonePricing:
     zp.tax_pct = 18.0
     return zp
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+# Serve built React app (frontend/dist) from root if present
+try:
+    DIST_DIR = (Path(__file__).resolve().parents[1] / "frontend" / "dist")
+    logger.info("DIST_DIR", DIST_DIR)
+    if DIST_DIR.exists():
+        mount_path = BASE_PATH if BASE_PATH.startswith("/") else f"/{BASE_PATH}"
+        if not mount_path.endswith("/"):
+            mount_path = mount_path
+        app.mount(mount_path, StaticFiles(directory=DIST_DIR.as_posix(), html=True), name="frontend")
+except Exception:
+    pass
+
+# if __name__ == "__main__":
+#     import uvicorn
+#     uvicorn.run(app, host="0.0.0.0", port=8001)
+
+

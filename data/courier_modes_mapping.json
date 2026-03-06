@@ -170,5 +170,9 @@
   {
     "Sheet Name": "XpressBees_Reverse_NonQC_PRZ_1",
     "Mode": "Reverse"
+  },
+  {
+    "Sheet Name": "Tezz_SDD_NDD_PRZ_1",
+    "Mode": "SDD"
   }
 ]
